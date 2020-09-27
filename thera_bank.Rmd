@@ -1,0 +1,494 @@
+---
+title: "Thera Bank Personal Loan Modelling"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  word_document: default
+---
+# Objective
+
+The data-set provides details from Thera Bank about a Personal Loan Campaign that was executed by the bank. 
+4982 customers were targeted with an offer of personal loan, out of which 480 customers responded positively. 
+The data needs to be used to create classification model(s) in order to predict the response of new set of customers in the future, depending on the attributes available in the data.
+Classification Models using following Supervised Machine Learning Techniques:
+1. Exploratory Analytics
+2. Clustering
+3. CART & Random Forest
+Once the Classification Models are built, after pruning a recommendation system to be provided.
+
+
+```{r}
+#install.packages("caret, repos = http://cran.us.r-project.org")
+#install.packages("rpart, repos = http://cran.us.r-project.org")
+#install.packages("rpart.plot, repos = http://cran.us.r-project.org")
+#install.packages("randomForest, repos = http://cran.us.r-project.org")
+
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(ggplot2)
+library(randomForest)
+```
+
+## Reading the input data
+
+```{r}
+base_data <-read.csv('D:/Freelancer_questions/Thera_bank/Thera Bank_Personal_Loan_Modelling.csv')
+
+```
+# 1)Exploratory Data Analysis and Descriptive Statistics
+
+
+```{r}
+# Find out Total Number of Rows and Columns 
+dim(base_data)
+```
+
+## Find out Class of each Feature, along with internal structure 
+
+```{r}
+
+str(base_data) 
+colnames(base_data)<-c('ID','Age_in_years','Experience(years)','Income_Monthly','Zip_code','Family_members','CCAvg','Education','Mortgage','Personal_loan','Securities_Account','CD_Account','Online','CreditCard')
+head(base_data)
+```
+
+```{r}
+prop.table(table(base_data$Personal_loan))*100
+```
+## the customers who took personal loan vs no personal loan was 90.4% and 9.6% respectively
+
+```{r}
+## Univariate analysis
+
+hist(base_data$Age_in_years,
+     main = "Histogram of Age",
+     xlab = "Age in Years")
+
+```
+Inference :we can observe that the Age is very close to the normal distribution
+
+### Converting Zipcodes/Familymembers/Education/Mortgage/PersonalLoan/SecuritiesAccount/CD Account/Online/Creditcard to factors
+
+```{r}
+base_data$Zip_code<-as.factor(base_data$Zip_code)
+base_data$Family_members<-as.factor(base_data$Family_members)
+base_data$Education<-as.factor(base_data$Education)
+base_data$Personal_loan<-as.factor(base_data$Personal_loan)
+base_data$Securities_Account<-as.factor(base_data$Securities_Account)
+base_data$CD_Account<-as.factor(base_data$CD_Account)
+base_data$Online<-as.factor(base_data$Online)
+base_data$CreditCard<-as.factor(base_data$CreditCard)
+
+```
+
+### Barplot of multiple dimensions
+
+```{r}
+# Grouped Bar Plot
+counts <- table(base_data$Family_members, base_data$Personal_loan)
+barplot(counts, main="Family members vs Personal Loan",
+  xlab="Personal Loan No vs Yes", col=c("darkblue","red","green","yellow"),
+  legend = rownames(counts), beside=TRUE)
+```
+
+Inference : We can clearly see that those people having more family members have higher liklihood to take loan
+
+
+```{r}
+counts <- table(base_data$Education, base_data$Personal_loan)
+barplot(counts, main="Education Category vs Personal Loan",
+  xlab="Personal Loan No vs Yes", col=c("darkblue","red","green"),
+  legend = c("1 Undergrad", "2 Graduate","3 Advanced/Professional"), beside=TRUE)
+```
+
+Inference : Hypothesis : Advanced/Professional require loan for higher studies
+
+### Boxplot for numerical data
+
+```{r}
+boxplot(base_data$Age_in_years,
+        main = toupper("Boxplot of Age"),
+        ylab = "Age in years",
+        col = "blue")
+```
+
+Inference : Not much outlier in Age column
+
+```{r}
+boxplot(base_data$`Experience(years)`,
+        main = toupper("Boxplot of Experience"),
+        ylab = "Experience in years",
+        col = "purple")
+```
+Inference : Not much outlier in Experience column
+
+
+```{r}
+
+boxplot(base_data$Income_Monthly,
+        main = toupper("Boxplot of Monthly Income"),
+        ylab = "Monthly Income",
+        col = "pink")
+
+```
+
+Inference : There are lots of outliers in the monthly income
+
+```{r}
+
+boxplot(base_data$CCAvg,
+        main = toupper("Boxplot of Average Spending of credit card per month"),
+        ylab = "Average Spending",
+        col = "maroon")
+
+```
+Inference : Here too in the average spending of credit card per month there are lots of outliers
+
+```{r}
+
+boxplot(base_data$Mortgage,
+        main = toupper("Boxplot of House Mortgage if any"),
+        ylab = "House Mortgag",
+        col = "maroon")
+
+```
+Inference : Here too in there are lots of outliers
+
+### Correlation between the numeric features
+
+```{r}
+
+my_data <- base_data[, c(2,3,4,7,9)]
+res <- cor(my_data)
+round(res, 2)
+```
+
+Inference
+
+1) Age in Years and Experience are highly positively correlated
+2) Monthly Income and Average credit card spend is also highly positively correlated
+
+# 2) Cluster Analysis
+
+Clustering features are only numberical
+
+All the categorical features have not been considered as they do not make much sense when we do clustering
+
+1) Age in Years
+2) Experience
+3) Monthly Income
+4) CCAvg
+5) Mortgage
+
+```{r}
+wss <- (nrow(my_data)-1)*sum(apply(my_data,2,var))
+
+for(i in 2:15)wss[i]<- sum(fit=kmeans(my_data,centers=i,15)$withinss)
+
+plot(1:15,wss,type="b",main="15 clusters",xlab="no. of cluster",ylab="with clsuter sum of squares")
+
+```
+
+A fundamental step for any unsupervised algorithm is to determine the optimal number of clusters into which the data may be clustered. The Elbow Method is one of the most popular methods to determine this optimal value of k.
+
+We now demonstrate the given method using the K-Means clustering technique 
+
+
+Inference : Based on the elbow curve we can see 4 clusters formed
+
+```{r}
+fit <- kmeans(my_data,4)
+library(cluster)
+library(fpc)
+plotcluster(my_data,fit$cluster)
+points(fit$centers,col=1:8,pch=16)
+```
+
+### getting the cluster means
+
+```{r}
+
+mydata <- data.frame(my_data,fit$cluster)
+cluster_mean <- aggregate(mydata,by = list(fit$cluster),FUN = mean)
+cluster_mean
+```
+
+
+"It is important to remember that Data Analytics Projects require a delicate balance between experimentation, intuition, but also following (once a while) a process to avoid getting fooled by randomness and “finding results and patterns” that are mainly driven by our own biases and not by the facts/data themselves"-https://inseaddataanalytics.github.io/INSEADAnalytics/CourseSessions/Sessions45/ClusterAnalysisReading.html
+
+### As Kmeans is prone to outliers lets recluster them after outlier removal
+
+```{r}
+my_data2<-my_data
+
+outliers3 <- boxplot(my_data2$Income_Monthly, plot=FALSE)
+outliers3<-outliers3$out
+
+my_data2 <- my_data2[-which(my_data2$Income_Monthly %in% outliers3),]
+
+outliers4 <- boxplot(my_data2$CCAvg, plot=FALSE)
+outliers4<-outliers4$out
+
+my_data2 <- my_data2[-which(my_data2$CCAvg %in% outliers4),]
+
+outliers5 <- boxplot(my_data2$Mortgage, plot=FALSE)
+outliers5<-outliers5$out
+
+my_data2 <- my_data2[-which(my_data2$Mortgage %in% outliers5),]
+
+nrow(my_data2)
+
+```
+Inference : Outliers have been successfully removed
+
+
+# plotting elbow curve for the outlier removed data
+
+```{r}
+wss <- (nrow(my_data2)-1)*sum(apply(my_data2,2,var))
+
+for(i in 2:15)wss[i]<- sum(fit2=kmeans(my_data2,centers=i,15)$withinss)
+
+plot(1:15,wss,type="b",main="15 clusters",xlab="no. of cluster",ylab="with clsuter sum of squares")
+```
+Inference : 5 clusters make sense here
+
+```{r}
+fit2<-kmeans(my_data2,5)
+my_data3 <- data.frame(my_data2)
+cluster_mean_2 <- aggregate(my_data3,by = list(fit2$cluster),FUN = mean)
+cluster_mean_2
+```
+
+Inference : The 5 clusters make much more sense after outlier removal
+
+```{r}
+
+my_data2$cluster<-fit2$cluster
+
+library(dplyr)
+
+head(my_data2)
+
+index<-as.integer(row.names.data.frame(my_data2))
+
+Personal_loan<-base_data[index,10]
+
+my_data2$Personal_loan<-Personal_loan
+head(my_data2)
+
+```
+
+Inference : We have got the two cluster
+
+### To check the Personal_loan vs Cluster barchart
+
+```{r}
+# Grouped Bar Plot
+counts <- table( my_data2$Personal_loan,my_data2$cluster)
+barplot(counts, main="Family members vs Personal Loan",
+  xlab="Personal Loan No vs Yes", col=c("red","green"),
+  legend = c("Personal_Loan_No","Personal_Loan_Yes"), beside=TRUE)
+
+```
+
+Inference : Targeting the cluster 4 segment would be the best option for conversion rate to be higher, also the population is close to 500
+
+This would help the company to spend the marketing money on the correct customers rather than waste it on all customers
+
+
+# Cart and RandomForest algorithm
+
+
+Creating Training and Testing Dataset
+The given data set is divided into Training and Testing data set, with 70:30 proportion.
+The distribution of Responder and Non Responder Class is verified in both the data sets, and ensured it’s close to equal.
+
+```{r}
+set.seed(111)
+trainIndex <- createDataPartition(Personal_loan,
+                                  p=0.7,
+                                  list = FALSE,
+                                  times = 1)
+train.data <- base_data[trainIndex,2:length(base_data) ]
+test.data  <- base_data[-trainIndex,2:length(base_data) ]
+```
+
+
+Model Building - CART (Unbalanced Dataset)
+Setting the control parameter inputs for rpart
+
+```{r}
+r.ctrl <- rpart.control(minsplit = 100,
+                        minbucket = 10,
+                        cp = 0,
+                        xval = 10
+                        )
+#Exclude columns - "Customer ID" and "Acct Opening Date"
+cart.train <- train.data
+m1 <- rpart(formula = Personal_loan~.,
+            data = cart.train,
+            method = "class",
+            control = r.ctrl
+            )
+#install.packages("rattle") 
+#install.packages("RColorBrewer") 
+library(rattle) 
+library(RColorBrewer) 
+
+fancyRpartPlot(m1) 
+
+```
+Variables used in the tree construction
+
+```{r}
+printcp(m1) 
+```
+
+
+### Pruning the cart tree to ensure that the model is not overfitting
+
+"Overfitting happens when a model learns the detail and noise in the training data to the extent that it negatively impacts the performance of the model on new data. This means that the noise or random fluctuations in the training data is picked up and learned as concepts by the model. The problem is that these concepts do not apply to new data and negatively impact the models ability to generalize" -https://machinelearningmastery.com/overfitting-and-underfitting-with-machine-learning-algorithms/
+
+
+```{r}
+plotcp(m1) 
+```
+Pruning the tree has started
+
+We are considering 0.045 as the pruned parameter and rebuild the tree
+
+```{r}
+ptree<- prune(m1, cp= 0.045 ,"CP") 
+printcp(ptree)
+```
+
+
+### Plotting of pruned tree
+
+```{r}
+fancyRpartPlot(ptree, 
+               uniform = TRUE, 
+               main = "Final Tree", 
+               palettes = c("Blues", "Oranges")
+               )
+```
+### predicting on the test set
+
+```{r}
+
+## Scoring Holdout sample 
+cart.test <- test.data
+cart.test$predict.class = predict(ptree, cart.test,type = "class")
+
+
+
+x<-cart.test$Personal_loan
+
+cart.test$predict.score = predict(ptree, cart.test, type = "prob")
+library(caret)
+confusionMatrix(table(as.factor(x),cart.test$predict.class ))
+
+```
+
+### AUC/ROC performance metrics
+
+### ROC cure for pruned tree
+
+```{r}
+library("ROCR")
+Pred.cart = predict(ptree, newdata = cart.test, type = "prob")[,2] 
+Pred2 = prediction(Pred.cart, cart.test$Personal_loan) 
+plot(performance(Pred2, "tpr", "fpr"))
+abline(0, 1, lty = 2)
+ 
+#######################################
+##
+```
+
+### plotting auc
+
+```{r}
+auc.tmp <- performance(Pred2,"auc")
+auc <- as.numeric(auc.tmp@y.values)
+print(auc)
+```
+
+Inference : The area under the curve is close to 0.97
+
+
+Result : The Cart model has given close to 97.5 % accurcy in predicting the people who will take personal loan on the test data
+
+### Random Forest model
+
+
+```{r}
+library(randomForest)
+
+library(caret)
+library(e1071)
+trainIndex <- createDataPartition(Personal_loan,
+                                  p=0.7,
+                                  list = FALSE,
+                                  times = 1)
+base_data_2<-base_data[,-5]
+train.data <- base_data_2[trainIndex,2:length(base_data_2) ]
+colnames(train.data)<-c('Age_in_years','Experience_years','Income_Monthly','Family_members','CCAvg','Education','Mortgage',
+                        'Personal_loan','Securities_Account','CD_Account','Online','CreditCard')
+train.data$Personal_loan<-as.factor(train.data$Personal_loan)
+
+train.data<-na.omit(train.data)
+test.data  <- base_data_2[-trainIndex,2:length(base_data_2) ]
+colnames(test.data)<-c('Age_in_years','Experience_years','Income_Monthly','Family_members','CCAvg','Education','Mortgage',
+                        'Personal_loan','Securities_Account','CD_Account','Online','CreditCard')
+
+test.data<-na.omit(test.data)
+test.data$Personal_loan<-as.factor(test.data$Personal_loan)
+
+
+model1 <- randomForest(Personal_loan ~ ., ntree = 100,data = train.data, importance = TRUE)
+model1
+Pred_rf <- predict(model1, test.data, type = 'class')
+confusionMatrix(test.data$Personal_loan, Pred_rf)
+
+
+
+```
+Result : Random forest has perfomed very well with 98.9% accuracy on the test data
+
+
+### ROC curve for random forest
+
+```{r}
+library("ROCR")
+
+Pred_rf <- predict(model1, test.data, type = 'prob')[,2]
+
+require(pROC)
+rf.roc<-roc(test.data$Personal_loan,Pred_rf)
+plot(rf.roc)
+
+#######################################
+##
+```
+
+
+Inference : The ROC is very close to ideal
+
+```{r}
+auc(rf.roc)
+```
+
+
+```{r}
+varImpPlot(model1,  
+           sort = T,
+           n.var=10,
+           main="Top 10 - Variable Importance")
+```
+
+Inference
+
+1) Monthly Income and Education is the most significant factor that decides personal loan
